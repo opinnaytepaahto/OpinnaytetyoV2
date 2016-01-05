@@ -8,7 +8,12 @@ extends KinematicBody2D
 # Movement variables #
 const GRAVITY = 200.0
 const FRICTION = 20.0
+
 const WALK_SPEED = 20.0
+const JUMP_HEIGHT = 200.0
+
+var jumping = false
+var jump_timer = 2
 
 var velocity = Vector2()
 # ------------------ #
@@ -22,7 +27,6 @@ func _ready():
 	screen_size = get_viewport_rect().size
 	player_size = get_node("Image").get_texture().get_size()
 	
-	set_process(true)
 	set_fixed_process(true)
 	pass
 	
@@ -45,6 +49,16 @@ func _fixed_process(delta):
 		elif (velocity.x < 0):
 			velocity.x += FRICTION
 	
+	if (Input.is_action_pressed("player_jump") and not jumping):
+		velocity.y = -JUMP_HEIGHT
+		jump_timer = 2
+		jumping = true
+		
+	if (jump_timer > 0):
+		jump_timer -= delta
+	else:
+		jumping = false
+	
 	# Move according to our velocity
 	var motion = velocity * delta
 	motion = move(motion)
@@ -55,12 +69,4 @@ func _fixed_process(delta):
 		motion = n.slide(motion)
 		velocity = n.slide(velocity)
 		move(motion)
-	pass
-	
-func _process(delta):
-	player_pos = self.get_pos()
-	
-	if (player_pos.y >= screen_size.y - player_size.y / 2):
-		print(player_pos.y)
-		self.set_pos(Vector2(player_pos.x, screen_size.y - player_size.y / 2))
 	pass
