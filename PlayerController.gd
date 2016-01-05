@@ -33,10 +33,12 @@ func _fixed_process(delta):
 	# Movement with keys
 	if (Input.is_action_pressed("player_right")):
 		velocity.x += WALK_SPEED
-		get_node("Image").set_flip_v(true)
+		get_node("Image").set_flip_v(false)
+		get_node("Image").set_flip_h(false)
 	elif (Input.is_action_pressed("player_left")):
 		velocity.x -= WALK_SPEED
-		get_node("Image").set_flip_v(false)
+		get_node("Image").set_flip_v(true)
+		get_node("Image").set_flip_h(true)
 	else:
 		if (velocity.x > 0):
 			velocity.x -= FRICTION
