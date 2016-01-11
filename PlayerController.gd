@@ -1,79 +1,135 @@
-
 extends KinematicBody2D
 
-# member variables here, example:
-# var a=2
-# var b="textvar"
+# This is a simple collision demo showing how
+# the kinematic controller works.
+# move() will allow to move the node, and will
+# always move it to a non-colliding spot,
+# as long as it starts from a non-colliding spot too.
 
-# Movement variables #
-const GRAVITY = 800.0
-const FRICTION = 50.0
+# Member variables
+const GRAVITY = 1000.0 # Pixels/second
 
-const WALK_SPEED = 10.0
-const JUMP_HEIGHT = 400.0
+# Angle in degrees towards either side that the player can consider "floor"
+const FLOOR_ANGLE_TOLERANCE = 40
+const WALK_FORCE = 800
+const WALK_MIN_SPEED = 10
+const WALK_MAX_SPEED = 325
+const STOP_FORCE = 1300
+const JUMP_SPEED = 500
+const JUMP_MAX_AIRBORNE_TIME = 0.2
 
-var jumping = false
-var jump_timer = 0.2
+const SLIDE_STOP_VELOCITY = 1.0 # One pixel per second
+const SLIDE_STOP_MIN_TRAVEL = 1.0 # One pixel
 
 var velocity = Vector2()
-# ------------------ #
+var on_air_time = 100
+var jumping = false
 
-var screen_size
-var player_size
+var prev_jump_pressed = false
 
-var player_pos
+var spacebullet = preload("res://spacebullet.scn")
 
-func _ready():
-	screen_size = get_viewport_rect().size
-	player_size = get_node("Image").get_texture().get_size()
-	
-	var detector = get_node("ButtonDetector")
-	
-	set_fixed_process(true)
-	set_process(true)
-	pass
-	
 func _fixed_process(delta):
-	# Gravity
-	velocity.y += delta * GRAVITY
+	# Create forces
+	var force = Vector2(0, GRAVITY)
 	
-	# Movement with keys
-	if (Input.is_action_pressed("player_right")):
-		velocity.x += WALK_SPEED
-		get_node("Image").set_flip_v(false)
-		get_node("Image").set_flip_h(false)
-	elif (Input.is_action_pressed("player_left")):
-		velocity.x -= WALK_SPEED
-		get_node("Image").set_flip_v(true)
-		get_node("Image").set_flip_h(true)
-	else:
-		if (velocity.x > 20):
-			velocity.x -= FRICTION
-		elif (velocity.x < -20):
-			velocity.x += FRICTION
-		else:
-			velocity.x = 0
+	var walk_left = Input.is_action_pressed("player_left")
+	var walk_right = Input.is_action_pressed("player_right")
+	var jump = Input.is_action_pressed("player_jump")
+	var shoot = Input.is_action_pressed("player_shoot")
 	
-	if (Input.is_action_pressed("player_jump") and not jumping):
-		velocity.y = -JUMP_HEIGHT
-		jump_timer = 1
-		jumping = true
+	var stop = true
 	
-	# Move according to our velocity
-	var motion = velocity * delta
+	if (walk_left):
+		if (velocity.x <= WALK_MIN_SPEED and velocity.x > -WALK_MAX_SPEED):
+			force.x -= WALK_FORCE
+			get_node("Image").set_flip_h(true)
+			get_node("Image").set_flip_v(false)
+			stop = false
+	elif (walk_right):
+		if (velocity.x >= -WALK_MIN_SPEED and velocity.x < WALK_MAX_SPEED):
+			force.x += WALK_FORCE
+			get_node("Image").set_flip_h(false)
+			get_node("Image").set_flip_v(false)
+			stop = false
+	
+	if (shoot):
+		var spacebullet_instance = spacebullet.instance()
+		var pos = get_parent().get_pos()
+		pos.x = 22
+		spacebullet_instance.set_pos(pos)
+		add_child(spacebullet_instance)
+	
+	if (stop):
+		var vsign = sign(velocity.x)
+		var vlen = abs(velocity.x)
+		
+		vlen -= STOP_FORCE*delta
+		if (vlen < 0):
+			vlen = 0
+		
+		velocity.x = vlen*vsign
+	
+	# Integrate forces to velocity
+	velocity += force*delta
+	
+	# Integrate velocity into motion and move
+	var motion = velocity*delta
+	
+	# Move and consume motion
 	motion = move(motion)
 	
-	# Slide if you are colliding (don't get stuck when you hit something)
+	var floor_velocity = Vector2()
+	
 	if (is_colliding()):
+		# You can check which tile was collision against with this
+		# print(get_collider_metadata())
+		
+		# Ran against something, is it the floor? Get normal
 		var n = get_collision_normal()
-		motion = n.slide(motion)
-		velocity = n.slide(velocity)
-		move(motion)
-	pass
-
-func _process(delta):
-	if (jump_timer > 0):
-		jump_timer -= delta
-	else:
+		
+		if (rad2deg(acos(n.dot(Vector2(0, -1)))) < FLOOR_ANGLE_TOLERANCE):
+			# If angle to the "up" vectors is < angle tolerance
+			# char is on floor
+			on_air_time = 0
+			floor_velocity = get_collider_velocity()
+		
+		if (on_air_time == 0 and force.x == 0 and get_travel().length() < SLIDE_STOP_MIN_TRAVEL and abs(velocity.x) < SLIDE_STOP_VELOCITY and get_collider_velocity() == Vector2()):
+			# Since this formula will always slide the character around, 
+			# a special case must be considered to to stop it from moving 
+			# if standing on an inclined floor. Conditions are:
+			# 1) Standing on floor (on_air_time == 0)
+			# 2) Did not move more than one pixel (get_travel().length() < SLIDE_STOP_MIN_TRAVEL)
+			# 3) Not moving horizontally (abs(velocity.x) < SLIDE_STOP_VELOCITY)
+			# 4) Collider is not moving
+			
+			revert_motion()
+			velocity.y = 0.0
+		else:
+			# For every other case of motion, our motion was interrupted.
+			# Try to complete the motion by "sliding" by the normal
+			motion = n.slide(motion)
+			velocity = n.slide(velocity)
+			# Then move again
+			move(motion)
+	
+	if (floor_velocity != Vector2()):
+		# If floor moves, move with floor
+		move(floor_velocity*delta)
+	
+	if (jumping and velocity.y > 0):
+		# If falling, no longer jumping
 		jumping = false
-	print(jump_timer)
+	
+	if (on_air_time < JUMP_MAX_AIRBORNE_TIME and jump and not prev_jump_pressed and not jumping):
+		# Jump must also be allowed to happen if the character left the floor a little bit ago.
+		# Makes controls more snappy.
+		velocity.y = -JUMP_SPEED
+		jumping = true
+	
+	on_air_time += delta
+	prev_jump_pressed = jump
+
+
+func _ready():
+	set_fixed_process(true)
