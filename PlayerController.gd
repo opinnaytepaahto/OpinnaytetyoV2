@@ -21,6 +21,10 @@ const JUMP_MAX_AIRBORNE_TIME = 0.2
 const SLIDE_STOP_VELOCITY = 1.0 # One pixel per second
 const SLIDE_STOP_MIN_TRAVEL = 1.0 # One pixel
 
+var left = false
+
+var shoot_inteval = 0.5
+
 var velocity = Vector2()
 var on_air_time = 100
 var jumping = false
@@ -40,25 +44,31 @@ func _fixed_process(delta):
 	
 	var stop = true
 	
+	shoot_inteval -= delta
+	
 	if (walk_left):
 		if (velocity.x <= WALK_MIN_SPEED and velocity.x > -WALK_MAX_SPEED):
 			force.x -= WALK_FORCE
 			get_node("Image").set_flip_h(true)
 			get_node("Image").set_flip_v(false)
+			left = true
 			stop = false
 	elif (walk_right):
 		if (velocity.x >= -WALK_MIN_SPEED and velocity.x < WALK_MAX_SPEED):
 			force.x += WALK_FORCE
 			get_node("Image").set_flip_h(false)
 			get_node("Image").set_flip_v(false)
+			left = false
 			stop = false
 	
-	if (shoot):
+	if (shoot and shoot_inteval <= 0):
 		var spacebullet_instance = spacebullet.instance()
 		var pos = get_parent().get_pos()
 		pos.x = 22
 		spacebullet_instance.set_pos(pos)
 		add_child(spacebullet_instance)
+		
+		shoot_inteval = 0.5
 	
 	if (stop):
 		var vsign = sign(velocity.x)
